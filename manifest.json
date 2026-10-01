@@ -27,17 +27,18 @@
         "Keypad",
         "Encoder"
       ],
+      "DisableAutomaticStates": true,
       "SupportedInMultiActions": true,
       "States": [
-        {
-          "Image": "icons/mic_on",
-          "TitleAlignment": "bottom",
-          "Name": "Live"
-        },
         {
           "Image": "icons/mic_off",
           "TitleAlignment": "bottom",
           "Name": "Muted"
+        },
+        {
+          "Image": "icons/mic_on",
+          "TitleAlignment": "bottom",
+          "Name": "Live"
         }
       ]
     },
@@ -50,6 +51,7 @@
         "Keypad",
         "Encoder"
       ],
+      "DisableAutomaticStates": true,
       "SupportedInMultiActions": true,
       "States": [
         {

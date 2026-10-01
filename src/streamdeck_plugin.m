@@ -29,8 +29,6 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
 @property (nonatomic, strong) NSURLSessionWebSocketTask *webSocketTask;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *activePlayPauseContexts;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *activeMicMuteContexts;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *contextLastState;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *contextLastTitle;
 
 @end
 
@@ -48,8 +46,6 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
         _infoJson = [infoJson copy];
         _activePlayPauseContexts = [[NSMutableDictionary alloc] init];
         _activeMicMuteContexts = [[NSMutableDictionary alloc] init];
-        _contextLastState = [[NSMutableDictionary alloc] init];
-        _contextLastTitle = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -177,10 +173,10 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
             self.activeMicMuteContexts[context] = action;
         }
 
-        // Sync initial microphone mute & volume status
+        // State 0 = Muted (0%, mic_off, Red), State 1 = Live (100%/restored, mic_on, Green)
         float vol = [[AudioController sharedController] inputVolume];
         BOOL isMuted = [[AudioController sharedController] isMuted];
-        NSInteger state = isMuted ? 1 : 0;
+        NSInteger state = isMuted ? 0 : 1;
         NSString *title = isMuted ? @"0%" : [NSString stringWithFormat:@"%d%%", (int)round(vol * 100.0f)];
         [self setState:state forContext:context];
         [self setTitle:title forContext:context];
@@ -198,13 +194,6 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
         @synchronized (self.activeMicMuteContexts) {
             [self.activeMicMuteContexts removeObjectForKey:context];
         }
-    }
-
-    @synchronized (self.contextLastState) {
-        [self.contextLastState removeObjectForKey:context];
-    }
-    @synchronized (self.contextLastTitle) {
-        [self.contextLastTitle removeObjectForKey:context];
     }
 }
 
@@ -233,14 +222,6 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
 - (void)setState:(NSInteger)state forContext:(NSString *)context {
     if (!context) return;
 
-    @synchronized (self.contextLastState) {
-        NSNumber *last = self.contextLastState[context];
-        if (last && last.integerValue == state) {
-            return;
-        }
-        self.contextLastState[context] = @(state);
-    }
-
     NSDictionary *msg = @{
         @"event": @"setState",
         @"context": context,
@@ -254,14 +235,6 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
 - (void)setTitle:(NSString *)title forContext:(NSString *)context {
     if (!context) return;
     NSString *safeTitle = title ?: @"";
-
-    @synchronized (self.contextLastTitle) {
-        NSString *last = self.contextLastTitle[context];
-        if (last && [last isEqualToString:safeTitle]) {
-            return;
-        }
-        self.contextLastTitle[context] = safeTitle;
-    }
 
     NSDictionary *msg = @{
         @"event": @"setTitle",
@@ -287,7 +260,8 @@ static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.p
 }
 
 - (void)updateAllMicMuteContextsWithVolume:(float)volume isMuted:(BOOL)isMuted {
-    NSInteger targetState = isMuted ? 1 : 0;
+    // State 0 = Muted (0%, mic_off, Red), State 1 = Live (100%/restored, mic_on, Green)
+    NSInteger targetState = isMuted ? 0 : 1;
     NSString *title = isMuted ? @"0%" : [NSString stringWithFormat:@"%d%%", (int)round(volume * 100.0f)];
 
     NSArray *contexts = nil;

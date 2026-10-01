@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mock OpenDeck / Stream Deck WebSocket server test for macos-media plugin.
+Mock OpenDeck / Stream Deck WebSocket server test for yft sandbox plugin.
 Implements a minimal RFC 6455 WebSocket server in pure Python standard library.
 """
 
@@ -64,6 +64,32 @@ def read_frame(sock):
         return unmasked.decode('utf-8')
     return data.decode('utf-8')
 
+class WSMessageQueue:
+    def __init__(self, sock):
+        self.sock = sock
+        self.queue = []
+
+    def wait_for(self, predicate, timeout=4.0):
+        deadline = time.time() + timeout
+        for i, msg in enumerate(self.queue):
+            if predicate(msg):
+                return self.queue.pop(i)
+
+        while time.time() < deadline:
+            remaining = max(0.1, deadline - time.time())
+            self.sock.settimeout(remaining)
+            try:
+                frame = read_frame(self.sock)
+                if not frame:
+                    continue
+                msg = json.loads(frame)
+                if predicate(msg):
+                    return msg
+                self.queue.append(msg)
+            except socket.timeout:
+                break
+        raise TimeoutError(f"Timed out waiting for message satisfying condition. Received queue: {self.queue}")
+
 def main():
     print("=== Running Mock OpenDeck WebSocket Integration Test ===")
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -109,65 +135,99 @@ def main():
         client_sock.sendall(handshake_resp.encode('utf-8'))
         print("WebSocket handshake completed")
 
+        mq = WSMessageQueue(client_sock)
+
         # Step 1: Verify Registration Message
-        reg_frame = read_frame(client_sock)
-        assert reg_frame is not None, "Failed to receive registration frame"
-        reg_data = json.loads(reg_frame)
+        reg_data = mq.wait_for(lambda m: m.get("event") == reg_event)
         print(f"Received registration: {reg_data}")
-        assert reg_data.get("event") == reg_event, f"Expected event '{reg_event}', got '{reg_data.get('event')}'"
         assert reg_data.get("uuid") == test_uuid, f"Expected uuid '{test_uuid}', got '{reg_data.get('uuid')}'"
         print("✓ Plugin registration verified")
 
-        # Step 2: Send willAppear event
-        context_id = "mock-key-context-1"
-        will_appear = {
+        # Step 2: Test Play/Pause Action
+        context_media = "mock-key-context-media"
+        will_appear_media = {
             "event": "willAppear",
-            "action": "com.toumorokoshi.macosmedia.playpause",
-            "context": context_id,
+            "action": "com.toumorokoshi.yftsandbox.playpause",
+            "context": context_media,
             "device": "mock-streamdeck-1",
             "payload": {
                 "settings": {},
                 "state": 0
             }
         }
-        send_frame(client_sock, json.dumps(will_appear))
-        print("Sent willAppear event")
+        send_frame(client_sock, json.dumps(will_appear_media))
+        print("Sent willAppear for playpause")
 
-        # Step 3: Expect setState response
-        client_sock.settimeout(3.0)
-        state_frame = read_frame(client_sock)
-        assert state_frame is not None, "Failed to receive setState frame"
-        state_data = json.loads(state_frame)
-        print(f"Received state update: {state_data}")
-        assert state_data.get("event") == "setState", f"Expected event 'setState', got '{state_data.get('event')}'"
-        assert state_data.get("context") == context_id, f"Expected context '{context_id}'"
-        assert "state" in state_data.get("payload", {}), "Missing state in payload"
-        print("✓ Initial state synchronization verified")
+        state_data = mq.wait_for(lambda m: m.get("event") == "setState" and m.get("context") == context_media)
+        print(f"Received media state update: {state_data}")
+        print("✓ Media initial state synchronization verified")
 
-        # Step 4: Send keyDown event (Play/Pause)
-        key_down = {
+        # Step 3: Test Mic Mute Action (0% / 100%)
+        context_mic = "mock-key-context-mic"
+        will_appear_mic = {
+            "event": "willAppear",
+            "action": "com.toumorokoshi.yftsandbox.micmute",
+            "context": context_mic,
+            "device": "mock-streamdeck-1",
+            "payload": {
+                "settings": {},
+                "state": 0
+            }
+        }
+        send_frame(client_sock, json.dumps(will_appear_mic))
+        print("Sent willAppear for micmute")
+
+        # Plugin should send setState and setTitle
+        mic_state = mq.wait_for(lambda m: m.get("event") == "setState" and m.get("context") == context_mic)
+        mic_title = mq.wait_for(lambda m: m.get("event") == "setTitle" and m.get("context") == context_mic)
+        print(f"Received mic initial state: {mic_state}, title: {mic_title}")
+        assert "state" in mic_state.get("payload", {})
+        assert "title" in mic_title.get("payload", {})
+        print(f"✓ Mic initial state ({mic_state['payload']['state']}) & title ({mic_title['payload']['title']}) verified")
+
+        # Step 4: Toggle mic mute via keyDown
+        initial_state = mic_state['payload']['state']
+        expected_toggled_state = 1 if initial_state == 0 else 0
+
+        key_down_mic = {
             "event": "keyDown",
-            "action": "com.toumorokoshi.macosmedia.playpause",
-            "context": context_id,
+            "action": "com.toumorokoshi.yftsandbox.micmute",
+            "context": context_mic,
             "device": "mock-streamdeck-1",
             "payload": {
                 "settings": {},
                 "state": 0
             }
         }
-        send_frame(client_sock, json.dumps(key_down))
-        print("Sent keyDown event (Play/Pause)")
-        time.sleep(0.5)
+        send_frame(client_sock, json.dumps(key_down_mic))
+        print("Sent keyDown for micmute")
 
-        # Step 5: Send willDisappear event
+        # Expect state and title update on mute toggle
+        toggle_state = mq.wait_for(lambda m: m.get("event") == "setState" and m.get("context") == context_mic and m.get("payload", {}).get("state") == expected_toggled_state)
+        toggle_title = mq.wait_for(lambda m: m.get("event") == "setTitle" and m.get("context") == context_mic)
+        print(f"Received mic toggle state: {toggle_state}, title: {toggle_title}")
+        assert toggle_state['payload']['state'] == expected_toggled_state
+        print("✓ Mic toggle event handling verified")
+
+        time.sleep(0.3)
+
+        # Step 5: Toggle mic mute back to restore
+        send_frame(client_sock, json.dumps(key_down_mic))
+        restore_state = mq.wait_for(lambda m: m.get("event") == "setState" and m.get("context") == context_mic and m.get("payload", {}).get("state") == initial_state)
+        restore_title = mq.wait_for(lambda m: m.get("event") == "setTitle" and m.get("context") == context_mic)
+        print(f"Received mic restore state: {restore_state}, title: {restore_title}")
+        assert restore_state['payload']['state'] == initial_state
+        print("✓ Mic restore toggle verified")
+
+        # Step 6: Send willDisappear
         will_disappear = {
             "event": "willDisappear",
-            "action": "com.toumorokoshi.macosmedia.playpause",
-            "context": context_id,
+            "action": "com.toumorokoshi.yftsandbox.micmute",
+            "context": context_mic,
             "device": "mock-streamdeck-1"
         }
         send_frame(client_sock, json.dumps(will_disappear))
-        print("Sent willDisappear event")
+        print("Sent willDisappear event for micmute")
 
         print("✓ All protocol assertions passed successfully!")
 

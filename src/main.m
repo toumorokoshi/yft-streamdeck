@@ -1,19 +1,24 @@
 #import <Foundation/Foundation.h>
 #import "media_controller.h"
+#import "audio_controller.h"
 #import "streamdeck_plugin.h"
 
 static void printUsage(const char *progName) {
-    printf("macOS Media Control - OpenDeck & Stream Deck Plugin\n\n");
+    printf("yft sandbox - OpenDeck & Stream Deck Plugin\n\n");
     printf("Usage:\n");
     printf("  %s -port <port> -pluginUUID <uuid> -registerEvent <event> -info <info>\n\n", progName);
     printf("Standalone CLI testing options:\n");
-    printf("  --toggle     Toggle media play/pause on macOS\n");
-    printf("  --play       Start media playback on macOS\n");
-    printf("  --pause      Pause media playback on macOS\n");
-    printf("  --next       Skip to next track on macOS\n");
-    printf("  --previous   Return to previous track on macOS\n");
-    printf("  --status     Print current playback status (JSON)\n");
-    printf("  --help       Print this help message\n");
+    printf("  --toggle       Toggle media play/pause on macOS\n");
+    printf("  --play         Start media playback on macOS\n");
+    printf("  --pause        Pause media playback on macOS\n");
+    printf("  --next         Skip to next track on macOS\n");
+    printf("  --previous     Return to previous track on macOS\n");
+    printf("  --status       Print current playback status (JSON)\n");
+    printf("  --toggle-mic   Toggle microphone mute (0%% vs 100%%/restored)\n");
+    printf("  --mute         Mute microphone (set input volume to 0%%)\n");
+    printf("  --unmute       Unmute microphone (restore input volume / 100%%)\n");
+    printf("  --mic-status   Print current microphone volume and mute status (JSON)\n");
+    printf("  --help         Print this help message\n");
 }
 
 int main(int argc, const char * argv[]) {
@@ -57,6 +62,27 @@ int main(int argc, const char * argv[]) {
                 dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
                 printf("{\"isPlaying\": %s}\n", playing ? "true" : "false");
                 return 0;
+            } else if ([arg isEqualToString:@"--toggle-mic"]) {
+                BOOL ok = [[AudioController sharedController] toggleMute];
+                printf("Mic mute toggled: %s (current muted: %s)\n",
+                       ok ? "success" : "failed",
+                       [[AudioController sharedController] isMuted] ? "true" : "false");
+                return ok ? 0 : 1;
+            } else if ([arg isEqualToString:@"--mute"]) {
+                BOOL ok = [[AudioController sharedController] mute];
+                printf("Mic muted: %s\n", ok ? "success" : "failed");
+                return ok ? 0 : 1;
+            } else if ([arg isEqualToString:@"--unmute"]) {
+                BOOL ok = [[AudioController sharedController] unmute];
+                printf("Mic unmuted: %s\n", ok ? "success" : "failed");
+                return ok ? 0 : 1;
+            } else if ([arg isEqualToString:@"--mic-status"]) {
+                float vol = [[AudioController sharedController] inputVolume];
+                BOOL muted = [[AudioController sharedController] isMuted];
+                int pct = (int)round(vol * 100.0f);
+                printf("{\"isMuted\": %s, \"volume\": %.2f, \"percentage\": %d}\n",
+                       muted ? "true" : "false", vol, pct);
+                return 0;
             } else if ([arg isEqualToString:@"--help"] || [arg isEqualToString:@"-h"]) {
                 printUsage(argv[0]);
                 return 0;
@@ -80,12 +106,12 @@ int main(int argc, const char * argv[]) {
         }
 
         if (port <= 0 || !pluginUUID || !registerEvent) {
-            NSLog(@"[OpenDeck Media] Incomplete parameters provided. Showing usage:");
+            NSLog(@"[yft sandbox] Incomplete parameters provided. Showing usage:");
             printUsage(argv[0]);
             return 1;
         }
 
-        NSLog(@"[OpenDeck Media] Starting plugin for port: %ld, UUID: %@, event: %@",
+        NSLog(@"[yft sandbox] Starting plugin for port: %ld, UUID: %@, event: %@",
               (long)port, pluginUUID, registerEvent);
 
         StreamDeckPlugin *plugin = [[StreamDeckPlugin alloc] initWithPort:port

@@ -1,142 +1,92 @@
-# macOS Media Stream Deck Plugin for OpenDeck
+# yft sandbox Stream Deck Plugin for OpenDeck
 
-A native macOS Stream Deck plugin built for [OpenDeck](https://github.com/nekename/OpenDeck) (and compatible with Elgato Stream Deck). It provides system-wide media playback control on macOS with real-time playback state synchronization.
-
----
+A native macOS Stream Deck plugin built for [OpenDeck](https://github.com/nekename/OpenDeck) and compatible with Elgato Stream Deck. It provides macOS media controls and global microphone input mute control with live status display.
 
 ## Features
 
-- **Play / Pause Toggle Button**:
-  - Dynamically updates its key icon in real time: shows **Play (▶)** when media is paused, and **Pause (⏸)** when media is currently playing.
-  - Controls Spotify, Apple Music, YouTube in Safari/Chrome, Podcasts, VLC, IINA, and any other application registered with macOS Now Playing.
-  - Responds immediately to hardware keys, Bluetooth headphones, or on-screen actions via system notifications.
-- **Dedicated Actions**:
-  - **Play**: Explicitly resume / start media playback.
-  - **Pause**: Explicitly pause media playback.
-  - **Next Track**: Skip to the next track.
-  - **Previous Track**: Return to the previous track.
-- **100% Native Universal Binary**:
-  - Built with Objective-C and Cocoa — zero external dependencies, no Node.js or Python runtime required at execution time.
-  - Compiled as a universal Mach-O binary supporting both Apple Silicon (`arm64`) and Intel (`x86_64`).
-- **Resilient Fallback**:
-  - Primary control via macOS `MediaRemote.framework` (identical to macOS Control Center).
-  - Secondary fallback via AppleScript and system auxiliary media keys (`NX_KEYTYPE_PLAY`) to ensure reliable playback start even when no active Now Playing session exists.
+- Microphone mute control:
+  - Toggles macOS system input volume between 0% and 100%.
+  - Mutes microphone input globally across Microsoft Teams, Zoom, Slack, Google Meet, and browser calls.
+  - Displays real-time status indicators with 0% (muted) and 100% (live) on the Stream Deck key.
+  - Updates dynamically via CoreAudio hardware listeners and WebSocket messages.
+  - Restores the previous non-zero volume level when unmuting.
+- Media playback control:
+  - Play and pause toggle action dynamically updates key state between play and pause.
+  - Controls active media sessions across Spotify, Apple Music, YouTube in Safari and Chrome, Podcasts, VLC, and IINA.
+  - Dedicated individual actions for Play, Pause, Next Track, and Previous Track.
+  - Responds immediately to system playback notifications from macOS MediaRemote.
+- Native universal binary:
+  - Written in Objective-C and Cocoa with zero runtime dependencies.
+  - Compiled as a universal Mach-O binary supporting arm64 and x86_64 architectures.
+  - Requires no Node.js or Python runtime at execution time.
+- Fallback support:
+  - Media controls use MediaRemote with AppleScript and auxiliary media key fallbacks.
+  - Audio input controls use CoreAudio scalar properties with AppleScript fallbacks.
 
----
+## Installation
 
-## Quick Start & Installation
+The plugin installs into the OpenDeck application support directory.
 
-The plugin is designed to be installed into OpenDeck's plugin directory:
-`~/Library/Application Support/opendeck/plugins/com.toumorokoshi.macosmedia.sdPlugin`
+- Build and symlink the bundle for development:
+  - Run `./install.sh --link` or `make link`.
+- Copy installation:
+  - Run `./install.sh` or `make install`.
+- OpenDeck configuration:
+  - Launch OpenDeck.
+  - Locate the yft sandbox category in the actions list.
+  - Drag the Mic Mute action or Play / Pause action to any Stream Deck key.
 
-### 1. Build and Link (Recommended for Development)
+## Standalone CLI commands
 
-Run the install script with `--link` to symlink the bundle into OpenDeck:
+The compiled binary can be tested standalone from the command line.
 
-```bash
-./install.sh --link
-```
+- Microphone control commands:
+  - `bin/macos-media --mic-status` prints the current microphone volume and mute state in JSON.
+  - `bin/macos-media --toggle-mic` toggles microphone input volume between 0% and restored level.
+  - `bin/macos-media --mute` sets input volume to 0%.
+  - `bin/macos-media --unmute` restores input volume to previous level or 100%.
+- Media playback commands:
+  - `bin/macos-media --status` prints current media playback state in JSON.
+  - `bin/macos-media --toggle` toggles media play and pause.
+  - `bin/macos-media --play` starts playback.
+  - `bin/macos-media --pause` pauses playback.
+  - `bin/macos-media --next` skips to next track.
+  - `bin/macos-media --previous` returns to previous track.
+  - `bin/macos-media --help` displays all available CLI flags.
 
-Or using `make`:
+## Integration tests
 
-```bash
-make link
-```
+A mock WebSocket server test simulates the OpenDeck lifecycle.
 
-### 2. Copy Installation
+- Run the test suite:
+  - Run `python3 tests/mock_opendeck_test.py`.
+  - The script tests WebSocket handshake, registration, willAppear, keyDown, setState, setTitle, and willDisappear events for both media and microphone actions.
 
-To copy the bundle instead of symlinking:
+## Repository layout
 
-```bash
-./install.sh
-```
+- [Makefile](Makefile): build, bundle, test, and install targets.
+- [install.sh](install.sh): installer script supporting copy and symlink modes.
+- [manifest.json](manifest.json): OpenDeck and Stream Deck plugin manifest definition.
+- [src/main.m](src/main.m): command line entry point and argument parsing.
+- [src/audio_controller.h](src/audio_controller.h): CoreAudio microphone controller header.
+- [src/audio_controller.m](src/audio_controller.m): CoreAudio microphone volume and mute implementation.
+- [src/media_controller.h](src/media_controller.h): MediaRemote playback controller header.
+- [src/media_controller.m](src/media_controller.m): MediaRemote playback controller implementation.
+- [src/streamdeck_plugin.h](src/streamdeck_plugin.h): Stream Deck WebSocket client header.
+- [src/streamdeck_plugin.m](src/streamdeck_plugin.m): Stream Deck WebSocket client and event handling.
+- [src/generate_icons.m](src/generate_icons.m): Cocoa generator producing SVG, 72x72 PNG, 128x128 PNG, and 144x144 PNG icon assets.
+- [icons/](icons/): generated icon assets.
+- [tests/mock_opendeck_test.py](tests/mock_opendeck_test.py): integration test suite.
+- [com.toumorokoshi.yftsandbox.sdPlugin/](com.toumorokoshi.yftsandbox.sdPlugin/): distributable plugin bundle.
 
-Or:
+## Icon licensing
 
-```bash
-make install
-```
+- Icon glyphs are sourced from Phosphor Icons, licensed under the MIT License.
+- Assets include plugin badges and high-contrast status tiles for media and microphone actions.
+- License text is included in [icons/LICENSE](icons/LICENSE).
 
-### 3. Open OpenDeck
+## References
 
-1. Launch or restart **OpenDeck**.
-2. Look for the **Media** category in the OpenDeck actions panel.
-3. Drag the **Play / Pause** action onto any Stream Deck key.
-4. Press the key to toggle your media!
-
----
-
-## Standalone CLI Testing
-
-You can test the binary directly without running OpenDeck:
-
-```bash
-# Query playback status (outputs JSON)
-bin/macos-media --status
-
-# Toggle play/pause
-bin/macos-media --toggle
-
-# Explicit commands
-bin/macos-media --play
-bin/macos-media --pause
-bin/macos-media --next
-bin/macos-media --previous
-
-# View all options
-bin/macos-media --help
-```
-
----
-
-## Integration Test Suite
-
-A mock WebSocket server test simulates the OpenDeck lifecycle (registration, `willAppear`, `keyDown`, `setState`, and shutdown):
-
-```bash
-python3 tests/mock_opendeck_test.py
-```
-
----
-
-## Project Structure
-
-```
-├── Makefile                           # Build, bundle, test, and install targets
-├── install.sh                         # Interactive / automated installer
-├── manifest.json                      # OpenDeck / Stream Deck plugin manifest
-├── src/
-│   ├── main.m                         # Plugin entrypoint & argument parsing
-│   ├── media_controller.h/m           # MediaRemote & system media controller
-│   ├── streamdeck_plugin.h/m          # WebSocket client & event router
-│   └── generate_icons.m               # Cocoa script generating 72x72 & 144x144 PNGs
-├── icons/                             # Generated icon assets (standard and @2x)
-├── tests/
-│   └── mock_opendeck_test.py          # Mock OpenDeck WebSocket server test
-└── com.toumorokoshi.macosmedia.sdPlugin/ # Distributable plugin bundle
-    ├── manifest.json
-    ├── bin/macos-media
-    └── icons/
-```
-
----
-
-## Icons & Licensing
-
-The icons in this plugin are built using vector glyphs from **[Phosphor Icons](https://phosphoricons.com/)** (the same icon library OpenDeck uses), licensed under the **MIT License**.
-
-- **Plugin Icon**: Vibrant purple/indigo badge with white music notes (`plugin.svg`, `plugin.png`, `plugin@2x.png`, `plugin_128.png`).
-- **Action Icons**: High-contrast `#22222A` dark rounded tiles with `#FFFFFF` crisp white vector glyphs for:
-  - Play / Pause (`playpause`)
-  - Play (`play`)
-  - Pause (`pause`)
-  - Next Track (`next`)
-  - Previous Track (`previous`)
-- Delivered as both `.svg` vector files and `.png` raster files (72x72, 128x128, and 144x144 @2x Retina) to ensure compatibility with all OpenDeck and Stream Deck display contexts.
-
----
-
-## License
-
-- Plugin Code: MIT License (see [LICENSE](LICENSE))
-- Icon Assets: Phosphor Icons (MIT License, Copyright (c) 2023 Phosphor Icons, see [icons/LICENSE](icons/LICENSE))
+- OpenDeck project repository: https://github.com/nekename/OpenDeck
+- Elgato Stream Deck Plugin SDK documentation: https://docs.elgato.com/sdk/plugins/overview
+- Phosphor Icons: https://phosphoricons.com

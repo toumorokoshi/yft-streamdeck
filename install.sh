@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-PLUGIN_NAME="com.toumorokoshi.macosmedia.sdPlugin"
+PLUGIN_NAME="com.toumorokoshi.yftsandbox.sdPlugin"
+LEGACY_PLUGIN_NAME="com.toumorokoshi.macosmedia.sdPlugin"
 OPENDECK_DIR="$HOME/Library/Application Support/opendeck"
 PLUGINS_DIR="$OPENDECK_DIR/plugins"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +12,7 @@ if [[ "$1" == "--link" || "$1" == "-l" ]]; then
     MODE="link"
 fi
 
-echo "=== Installing macOS Media Plugin for OpenDeck ==="
+echo "=== Installing yft sandbox Plugin for OpenDeck ==="
 
 # Build bundle if needed
 cd "$SCRIPT_DIR"
@@ -22,6 +23,12 @@ fi
 
 # Ensure OpenDeck plugins directory exists
 mkdir -p "$PLUGINS_DIR"
+
+# Clean up legacy plugin bundle if present
+if [[ -e "$PLUGINS_DIR/$LEGACY_PLUGIN_NAME" || -L "$PLUGINS_DIR/$LEGACY_PLUGIN_NAME" ]]; then
+    echo "Removing previous plugin bundle at $PLUGINS_DIR/$LEGACY_PLUGIN_NAME..."
+    rm -rf "$PLUGINS_DIR/$LEGACY_PLUGIN_NAME"
+fi
 
 DEST="$PLUGINS_DIR/$PLUGIN_NAME"
 
@@ -41,5 +48,5 @@ else
 fi
 
 echo ""
-echo "Plugin installed successfully!"
+echo "Plugin 'yft sandbox' installed successfully!"
 echo "If OpenDeck is currently running, restart it to load the plugin."

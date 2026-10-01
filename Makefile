@@ -1,10 +1,11 @@
 CC = clang
-CFLAGS = -O2 -fobjc-arc -arch arm64 -arch x86_64 -framework Foundation -framework Cocoa -framework IOKit
-PLUGIN_ID = com.toumorokoshi.macosmedia.sdPlugin
+CFLAGS = -O2 -fobjc-arc -arch arm64 -arch x86_64 -framework Foundation -framework Cocoa -framework IOKit -framework CoreAudio
+PLUGIN_ID = com.toumorokoshi.yftsandbox.sdPlugin
+LEGACY_PLUGIN_ID = com.toumorokoshi.macosmedia.sdPlugin
 OPENDECK_PLUGINS_DIR = $(HOME)/Library/Application Support/opendeck/plugins
 
-SOURCES = src/media_controller.m src/streamdeck_plugin.m src/main.m
-HEADERS = src/media_controller.h src/streamdeck_plugin.h
+SOURCES = src/media_controller.m src/audio_controller.m src/streamdeck_plugin.m src/main.m
+HEADERS = src/media_controller.h src/audio_controller.h src/streamdeck_plugin.h
 
 .PHONY: all bundle icons test clean install link
 
@@ -22,7 +23,7 @@ bin/macos-media: bin $(SOURCES) $(HEADERS)
 	chmod +x bin/macos-media
 
 bundle: icons bin/macos-media manifest.json
-	rm -rf $(PLUGIN_ID)
+	rm -rf $(PLUGIN_ID) $(LEGACY_PLUGIN_ID)
 	mkdir -p $(PLUGIN_ID)/bin $(PLUGIN_ID)/icons
 	cp manifest.json $(PLUGIN_ID)/
 	cp bin/macos-media $(PLUGIN_ID)/bin/
@@ -33,19 +34,20 @@ bundle: icons bin/macos-media manifest.json
 
 test: bin/macos-media
 	bin/macos-media --status
+	bin/macos-media --mic-status
 	bin/macos-media --help
 
 link: bundle
 	mkdir -p "$(OPENDECK_PLUGINS_DIR)"
-	rm -rf "$(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
+	rm -rf "$(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)" "$(OPENDECK_PLUGINS_DIR)/$(LEGACY_PLUGIN_ID)"
 	ln -s "$(CURDIR)/$(PLUGIN_ID)" "$(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
 	@echo "Symlinked $(PLUGIN_ID) to $(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
 
 install: bundle
 	mkdir -p "$(OPENDECK_PLUGINS_DIR)"
-	rm -rf "$(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
+	rm -rf "$(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)" "$(OPENDECK_PLUGINS_DIR)/$(LEGACY_PLUGIN_ID)"
 	cp -R "$(PLUGIN_ID)" "$(OPENDECK_PLUGINS_DIR)/"
 	@echo "Installed $(PLUGIN_ID) to $(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
 
 clean:
-	rm -rf bin icons com.toumorokoshi.macosmedia.sdPlugin
+	rm -rf bin icons $(PLUGIN_ID) $(LEGACY_PLUGIN_ID)

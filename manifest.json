@@ -1,10 +1,10 @@
 {
-  "Name": "macOS Media",
-  "Description": "Control media playback on macOS (Play / Pause, Next, Previous)",
+  "Name": "yft sandbox",
+  "Description": "macOS Stream Deck utilities: Media controls and Mic Mute (0% / 100%)",
   "Author": "toumorokoshi",
   "Version": "1.0.0",
   "Icon": "icons/plugin",
-  "Category": "Media",
+  "Category": "yft sandbox",
   "CategoryIcon": "icons/plugin",
   "CodePaths": {
     "x86_64-apple-darwin": "bin/macos-media",
@@ -19,7 +19,30 @@
   ],
   "Actions": [
     {
-      "UUID": "com.toumorokoshi.macosmedia.playpause",
+      "UUID": "com.toumorokoshi.yftsandbox.micmute",
+      "Name": "Mic Mute (0% / 100%)",
+      "Icon": "icons/mic_on",
+      "Tooltip": "Toggle microphone input volume between 0% (Muted) and 100% (Live)",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/mic_on",
+          "TitleAlignment": "bottom",
+          "Name": "Live"
+        },
+        {
+          "Image": "icons/mic_off",
+          "TitleAlignment": "bottom",
+          "Name": "Muted"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.yftsandbox.playpause",
       "Name": "Play / Pause",
       "Icon": "icons/playpause",
       "Tooltip": "Toggle play/pause for macOS media",
@@ -42,7 +65,7 @@
       ]
     },
     {
-      "UUID": "com.toumorokoshi.macosmedia.play",
+      "UUID": "com.toumorokoshi.yftsandbox.play",
       "Name": "Play",
       "Icon": "icons/play",
       "Tooltip": "Start or resume media playback",
@@ -59,7 +82,7 @@
       ]
     },
     {
-      "UUID": "com.toumorokoshi.macosmedia.pause",
+      "UUID": "com.toumorokoshi.yftsandbox.pause",
       "Name": "Pause",
       "Icon": "icons/pause",
       "Tooltip": "Pause media playback",
@@ -76,7 +99,7 @@
       ]
     },
     {
-      "UUID": "com.toumorokoshi.macosmedia.next",
+      "UUID": "com.toumorokoshi.yftsandbox.next",
       "Name": "Next Track",
       "Icon": "icons/next",
       "Tooltip": "Skip to next track",
@@ -93,7 +116,7 @@
       ]
     },
     {
-      "UUID": "com.toumorokoshi.macosmedia.previous",
+      "UUID": "com.toumorokoshi.yftsandbox.previous",
       "Name": "Previous Track",
       "Icon": "icons/previous",
       "Tooltip": "Return to previous track",

@@ -1,11 +1,22 @@
 #import "streamdeck_plugin.h"
 #import "media_controller.h"
+#import "audio_controller.h"
 
-static NSString * const kActionPlayPause = @"com.toumorokoshi.macosmedia.playpause";
-static NSString * const kActionPlay      = @"com.toumorokoshi.macosmedia.play";
-static NSString * const kActionPause     = @"com.toumorokoshi.macosmedia.pause";
-static NSString * const kActionNext      = @"com.toumorokoshi.macosmedia.next";
-static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previous";
+static NSString * const kActionMicMute         = @"com.toumorokoshi.yftsandbox.micmute";
+static NSString * const kActionTeamsMute       = @"com.toumorokoshi.yftsandbox.teamsmute";
+
+static NSString * const kActionPlayPause       = @"com.toumorokoshi.yftsandbox.playpause";
+static NSString * const kActionPlay            = @"com.toumorokoshi.yftsandbox.play";
+static NSString * const kActionPause           = @"com.toumorokoshi.yftsandbox.pause";
+static NSString * const kActionNext            = @"com.toumorokoshi.yftsandbox.next";
+static NSString * const kActionPrevious        = @"com.toumorokoshi.yftsandbox.previous";
+
+// Legacy aliases for backward compatibility
+static NSString * const kActionPlayPauseLegacy = @"com.toumorokoshi.macosmedia.playpause";
+static NSString * const kActionPlayLegacy      = @"com.toumorokoshi.macosmedia.play";
+static NSString * const kActionPauseLegacy     = @"com.toumorokoshi.macosmedia.pause";
+static NSString * const kActionNextLegacy      = @"com.toumorokoshi.macosmedia.next";
+static NSString * const kActionPreviousLegacy  = @"com.toumorokoshi.macosmedia.previous";
 
 @interface StreamDeckPlugin () <NSURLSessionWebSocketDelegate>
 
@@ -17,6 +28,9 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSURLSessionWebSocketTask *webSocketTask;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *activePlayPauseContexts;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *activeMicMuteContexts;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *contextLastState;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *contextLastTitle;
 
 @end
 
@@ -33,6 +47,9 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
         _registerEvent = [registerEvent copy];
         _infoJson = [infoJson copy];
         _activePlayPauseContexts = [[NSMutableDictionary alloc] init];
+        _activeMicMuteContexts = [[NSMutableDictionary alloc] init];
+        _contextLastState = [[NSMutableDictionary alloc] init];
+        _contextLastTitle = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -53,12 +70,19 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
     // Start listening for inbound messages
     [self listenForNextMessage];
 
-    // Set up playback state changed handler
+    // Set up media playback state changed handler
     __weak typeof(self) weakSelf = self;
     [[MediaController sharedController] setPlaybackStateChangedHandler:^(BOOL isPlaying) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         [strongSelf updateAllPlayPauseContextsWithIsPlaying:isPlaying];
+    }];
+
+    // Set up audio input volume / mute state changed handler
+    [[AudioController sharedController] setInputVolumeChangedHandler:^(float volume, BOOL isMuted) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf updateAllMicMuteContextsWithVolume:volume isMuted:isMuted];
     }];
 }
 
@@ -139,40 +163,65 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
 - (void)handleWillAppearForAction:(NSString *)action context:(NSString *)context payload:(NSDictionary *)payload {
     NSLog(@"[StreamDeckPlugin] Action willAppear: %@, context: %@", action, context);
 
-    if ([action isEqualToString:kActionPlayPause]) {
+    if ([action isEqualToString:kActionPlayPause] || [action isEqualToString:kActionPlayPauseLegacy]) {
         @synchronized (self.activePlayPauseContexts) {
             self.activePlayPauseContexts[context] = action;
         }
 
-        // Sync initial state
+        // Sync initial media playback state
         [[MediaController sharedController] checkIsPlayingWithCompletion:^(BOOL isPlaying) {
             [self setState:(isPlaying ? 1 : 0) forContext:context];
         }];
+    } else if ([action isEqualToString:kActionMicMute] || [action isEqualToString:kActionTeamsMute]) {
+        @synchronized (self.activeMicMuteContexts) {
+            self.activeMicMuteContexts[context] = action;
+        }
+
+        // Sync initial microphone mute & volume status
+        float vol = [[AudioController sharedController] inputVolume];
+        BOOL isMuted = [[AudioController sharedController] isMuted];
+        NSInteger state = isMuted ? 1 : 0;
+        NSString *title = isMuted ? @"0%" : [NSString stringWithFormat:@"%d%%", (int)round(vol * 100.0f)];
+        [self setState:state forContext:context];
+        [self setTitle:title forContext:context];
     }
 }
 
 - (void)handleWillDisappearForAction:(NSString *)action context:(NSString *)context payload:(NSDictionary *)payload {
     NSLog(@"[StreamDeckPlugin] Action willDisappear: %@, context: %@", action, context);
 
-    if ([action isEqualToString:kActionPlayPause]) {
+    if ([action isEqualToString:kActionPlayPause] || [action isEqualToString:kActionPlayPauseLegacy]) {
         @synchronized (self.activePlayPauseContexts) {
             [self.activePlayPauseContexts removeObjectForKey:context];
         }
+    } else if ([action isEqualToString:kActionMicMute] || [action isEqualToString:kActionTeamsMute]) {
+        @synchronized (self.activeMicMuteContexts) {
+            [self.activeMicMuteContexts removeObjectForKey:context];
+        }
+    }
+
+    @synchronized (self.contextLastState) {
+        [self.contextLastState removeObjectForKey:context];
+    }
+    @synchronized (self.contextLastTitle) {
+        [self.contextLastTitle removeObjectForKey:context];
     }
 }
 
 - (void)handleKeyDownForAction:(NSString *)action context:(NSString *)context payload:(NSDictionary *)payload {
     NSLog(@"[StreamDeckPlugin] Key down for action: %@", action);
 
-    if ([action isEqualToString:kActionPlayPause]) {
+    if ([action isEqualToString:kActionMicMute] || [action isEqualToString:kActionTeamsMute]) {
+        [[AudioController sharedController] toggleMute];
+    } else if ([action isEqualToString:kActionPlayPause] || [action isEqualToString:kActionPlayPauseLegacy]) {
         [[MediaController sharedController] togglePlayPause];
-    } else if ([action isEqualToString:kActionPlay]) {
+    } else if ([action isEqualToString:kActionPlay] || [action isEqualToString:kActionPlayLegacy]) {
         [[MediaController sharedController] play];
-    } else if ([action isEqualToString:kActionPause]) {
+    } else if ([action isEqualToString:kActionPause] || [action isEqualToString:kActionPauseLegacy]) {
         [[MediaController sharedController] pause];
-    } else if ([action isEqualToString:kActionNext]) {
+    } else if ([action isEqualToString:kActionNext] || [action isEqualToString:kActionNextLegacy]) {
         [[MediaController sharedController] nextTrack];
-    } else if ([action isEqualToString:kActionPrevious]) {
+    } else if ([action isEqualToString:kActionPrevious] || [action isEqualToString:kActionPreviousLegacy]) {
         [[MediaController sharedController] previousTrack];
     }
 }
@@ -183,11 +232,43 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
 
 - (void)setState:(NSInteger)state forContext:(NSString *)context {
     if (!context) return;
+
+    @synchronized (self.contextLastState) {
+        NSNumber *last = self.contextLastState[context];
+        if (last && last.integerValue == state) {
+            return;
+        }
+        self.contextLastState[context] = @(state);
+    }
+
     NSDictionary *msg = @{
         @"event": @"setState",
         @"context": context,
         @"payload": @{
             @"state": @(state)
+        }
+    };
+    [self sendJSON:msg];
+}
+
+- (void)setTitle:(NSString *)title forContext:(NSString *)context {
+    if (!context) return;
+    NSString *safeTitle = title ?: @"";
+
+    @synchronized (self.contextLastTitle) {
+        NSString *last = self.contextLastTitle[context];
+        if (last && [last isEqualToString:safeTitle]) {
+            return;
+        }
+        self.contextLastTitle[context] = safeTitle;
+    }
+
+    NSDictionary *msg = @{
+        @"event": @"setTitle",
+        @"context": context,
+        @"payload": @{
+            @"title": safeTitle,
+            @"target": @(0)
         }
     };
     [self sendJSON:msg];
@@ -202,6 +283,21 @@ static NSString * const kActionPrevious  = @"com.toumorokoshi.macosmedia.previou
 
     for (NSString *ctx in contexts) {
         [self setState:targetState forContext:ctx];
+    }
+}
+
+- (void)updateAllMicMuteContextsWithVolume:(float)volume isMuted:(BOOL)isMuted {
+    NSInteger targetState = isMuted ? 1 : 0;
+    NSString *title = isMuted ? @"0%" : [NSString stringWithFormat:@"%d%%", (int)round(volume * 100.0f)];
+
+    NSArray *contexts = nil;
+    @synchronized (self.activeMicMuteContexts) {
+        contexts = [self.activeMicMuteContexts.allKeys copy];
+    }
+
+    for (NSString *ctx in contexts) {
+        [self setState:targetState forContext:ctx];
+        [self setTitle:title forContext:ctx];
     }
 }
 

@@ -4,6 +4,7 @@ bin/
 *.dSYM/
 .DS_Store
 com.toumorokoshi.macosmedia.sdPlugin/
+com.toumorokoshi.yftsandbox.sdPlugin/
 
 # Temporary files
 __pycache__/

@@ -55,5 +55,5 @@ install: bundle
 
 clean:
 	cargo clean
-	rm -rf bin icons $(PLUGIN_ID) $(LEGACY_PLUGIN_ID)
+	rm -rf bin $(PLUGIN_ID) $(LEGACY_PLUGIN_ID)
 

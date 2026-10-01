@@ -1,0 +1,113 @@
+{
+  "Name": "macOS Media",
+  "Description": "Control media playback on macOS (Play / Pause, Next, Previous)",
+  "Author": "toumorokoshi",
+  "Version": "1.0.0",
+  "Icon": "icons/plugin",
+  "Category": "Media",
+  "CategoryIcon": "icons/plugin",
+  "CodePaths": {
+    "x86_64-apple-darwin": "bin/macos-media",
+    "aarch64-apple-darwin": "bin/macos-media"
+  },
+  "CodePathMac": "bin/macos-media",
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.15"
+    }
+  ],
+  "Actions": [
+    {
+      "UUID": "com.toumorokoshi.macosmedia.playpause",
+      "Name": "Play / Pause",
+      "Icon": "icons/playpause",
+      "Tooltip": "Toggle play/pause for macOS media",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/play",
+          "TitleAlignment": "bottom",
+          "Name": "Play"
+        },
+        {
+          "Image": "icons/pause",
+          "TitleAlignment": "bottom",
+          "Name": "Pause"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.macosmedia.play",
+      "Name": "Play",
+      "Icon": "icons/play",
+      "Tooltip": "Start or resume media playback",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/play",
+          "TitleAlignment": "bottom"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.macosmedia.pause",
+      "Name": "Pause",
+      "Icon": "icons/pause",
+      "Tooltip": "Pause media playback",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/pause",
+          "TitleAlignment": "bottom"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.macosmedia.next",
+      "Name": "Next Track",
+      "Icon": "icons/next",
+      "Tooltip": "Skip to next track",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/next",
+          "TitleAlignment": "bottom"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.macosmedia.previous",
+      "Name": "Previous Track",
+      "Icon": "icons/previous",
+      "Tooltip": "Return to previous track",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/previous",
+          "TitleAlignment": "bottom"
+        }
+      ]
+    }
+  ]
+}

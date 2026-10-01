@@ -1,0 +1,10 @@
+# Build outputs
+bin/
+*.o
+*.dSYM/
+.DS_Store
+com.toumorokoshi.macosmedia.sdPlugin/
+
+# Temporary files
+__pycache__/
+*.pyc

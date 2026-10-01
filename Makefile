@@ -1,11 +1,9 @@
 CC = clang
-CFLAGS = -O2 -fobjc-arc -arch arm64 -arch x86_64 -framework Foundation -framework Cocoa -framework IOKit -framework CoreAudio
 PLUGIN_ID = com.toumorokoshi.yftsandbox.sdPlugin
 LEGACY_PLUGIN_ID = com.toumorokoshi.macosmedia.sdPlugin
 OPENDECK_PLUGINS_DIR = $(HOME)/Library/Application Support/opendeck/plugins
 
-SOURCES = src/media_controller.m src/audio_controller.m src/streamdeck_plugin.m src/main.m
-HEADERS = src/media_controller.h src/audio_controller.h src/streamdeck_plugin.h
+RUST_SOURCES = src/main.rs src/audio.rs src/media.rs src/plugin.rs Cargo.toml
 
 .PHONY: all bundle icons test clean install link
 
@@ -14,12 +12,17 @@ all: icons bin/macos-media bundle
 bin:
 	mkdir -p bin
 
-icons: bin src/generate_icons.m
-	$(CC) -framework Cocoa src/generate_icons.m -o bin/generate_icons
+icons: bin objc/generate_icons.m
+	$(CC) -framework Cocoa objc/generate_icons.m -o bin/generate_icons
 	bin/generate_icons icons
 
-bin/macos-media: bin $(SOURCES) $(HEADERS)
-	$(CC) $(CFLAGS) $(SOURCES) -o bin/macos-media
+bin/macos-media: bin $(RUST_SOURCES)
+	cargo build --release --target aarch64-apple-darwin
+	cargo build --release --target x86_64-apple-darwin
+	lipo -create \
+		target/aarch64-apple-darwin/release/macos-media \
+		target/x86_64-apple-darwin/release/macos-media \
+		-output bin/macos-media
 	chmod +x bin/macos-media
 
 bundle: icons bin/macos-media manifest.json
@@ -36,6 +39,7 @@ test: bin/macos-media
 	bin/macos-media --status
 	bin/macos-media --mic-status
 	bin/macos-media --help
+	python3 tests/mock_opendeck_test.py
 
 link: bundle
 	mkdir -p "$(OPENDECK_PLUGINS_DIR)"
@@ -50,4 +54,6 @@ install: bundle
 	@echo "Installed $(PLUGIN_ID) to $(OPENDECK_PLUGINS_DIR)/$(PLUGIN_ID)"
 
 clean:
+	cargo clean
 	rm -rf bin icons $(PLUGIN_ID) $(LEGACY_PLUGIN_ID)
+

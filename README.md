@@ -16,7 +16,7 @@ A native macOS Stream Deck plugin built for [OpenDeck](https://github.com/nekena
   - Dedicated individual actions for Play, Pause, Next Track, and Previous Track.
   - Responds immediately to system playback notifications from macOS MediaRemote.
 - Native universal binary:
-  - Written in Objective-C and Cocoa with zero runtime dependencies.
+  - Written in Rust with Tokio and CoreAudio / MediaRemote FFI.
   - Compiled as a universal Mach-O binary supporting arm64 and x86_64 architectures.
   - Requires no Node.js or Python runtime at execution time.
 - Fallback support:
@@ -67,14 +67,13 @@ A mock WebSocket server test simulates the OpenDeck lifecycle.
 - [Makefile](Makefile): build, bundle, test, and install targets.
 - [install.sh](install.sh): installer script supporting copy and symlink modes.
 - [manifest.json](manifest.json): OpenDeck and Stream Deck plugin manifest definition.
-- [src/main.m](src/main.m): command line entry point and argument parsing.
-- [src/audio_controller.h](src/audio_controller.h): CoreAudio microphone controller header.
-- [src/audio_controller.m](src/audio_controller.m): CoreAudio microphone volume and mute implementation.
-- [src/media_controller.h](src/media_controller.h): MediaRemote playback controller header.
-- [src/media_controller.m](src/media_controller.m): MediaRemote playback controller implementation.
-- [src/streamdeck_plugin.h](src/streamdeck_plugin.h): Stream Deck WebSocket client header.
-- [src/streamdeck_plugin.m](src/streamdeck_plugin.m): Stream Deck WebSocket client and event handling.
-- [src/generate_icons.m](src/generate_icons.m): Cocoa generator producing SVG, 72x72 PNG, 128x128 PNG, and 144x144 PNG icon assets.
+- [Cargo.toml](Cargo.toml): Rust package configuration and dependencies.
+- [src/main.rs](src/main.rs): command line entry point and argument parsing.
+- [src/audio.rs](src/audio.rs): CoreAudio microphone volume and mute implementation.
+- [src/media.rs](src/media.rs): MediaRemote playback controller implementation.
+- [src/plugin.rs](src/plugin.rs): Stream Deck WebSocket client and event handling.
+- [objc/generate_icons.m](objc/generate_icons.m): Cocoa generator producing SVG, 72x72 PNG, 128x128 PNG, and 144x144 PNG icon assets.
+- [objc/](objc/): original Objective-C implementation preserved for reference.
 - [icons/](icons/): generated icon assets.
 - [tests/mock_opendeck_test.py](tests/mock_opendeck_test.py): integration test suite.
 - [com.toumorokoshi.yftsandbox.sdPlugin/](com.toumorokoshi.yftsandbox.sdPlugin/): distributable plugin bundle.

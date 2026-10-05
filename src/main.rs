@@ -1,9 +1,12 @@
 mod audio;
 mod media;
 mod plugin;
+mod teams;
 
 use clap::Parser;
 use log::{error, info};
+use std::sync::Arc;
+use std::time::Duration;
 
 /// yft sandbox - OpenDeck & Stream Deck Plugin CLI and daemon.
 #[derive(Parser, Debug)]
@@ -67,6 +70,30 @@ struct Cli {
     /// Print current microphone volume and mute status (JSON)
     #[arg(long = "mic-status")]
     mic_status: bool,
+
+    /// Toggle the Microsoft Teams camera in the current meeting
+    #[arg(long = "toggle-teams-camera")]
+    toggle_teams_camera: bool,
+
+    /// Toggle the Microsoft Teams microphone mute in the current meeting
+    #[arg(long = "toggle-teams-mute")]
+    toggle_teams_mute: bool,
+
+    /// Print current Microsoft Teams meeting state (JSON)
+    #[arg(long = "teams-status")]
+    teams_status: bool,
+}
+
+/// Connects to Teams and waits briefly for the initial meeting state.
+async fn connect_teams() -> Arc<teams::TeamsController> {
+    let teams = teams::TeamsController::new();
+    let mut rx = teams.subscribe();
+    let _ = tokio::time::timeout(Duration::from_secs(2), rx.wait_for(|s| s.connected)).await;
+    if teams.get_status().connected {
+        // Teams pushes a meetingUpdate shortly after connecting.
+        let _ = tokio::time::timeout(Duration::from_millis(500), rx.changed()).await;
+    }
+    teams
 }
 
 #[tokio::main]
@@ -179,6 +206,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(0);
     }
 
+    if cli.toggle_teams_camera || cli.toggle_teams_mute {
+        let teams = connect_teams().await;
+        let ok = if cli.toggle_teams_camera {
+            teams.toggle_video()
+        } else {
+            teams.toggle_mute()
+        };
+        // Wait for Teams to apply the toggle (or for the pairing prompt to be accepted).
+        if ok {
+            let mut rx = teams.subscribe();
+            let _ = tokio::time::timeout(Duration::from_secs(5), rx.changed()).await;
+        }
+        println!(
+            "Teams toggle sent: {} (state: {})",
+            if ok { "success" } else { "failed" },
+            serde_json::to_string(&teams.get_status())?
+        );
+        std::process::exit(if ok { 0 } else { 1 });
+    }
+    if cli.teams_status {
+        let teams = connect_teams().await;
+        println!("{}", serde_json::to_string(&teams.get_status())?);
+        std::process::exit(0);
+    }
+
     // Stream Deck daemon mode
     let port = cli.port;
     let plugin_uuid = cli.plugin_uuid;
@@ -191,8 +243,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "[yft sandbox] Starting plugin for port: {}, UUID: {}, event: {}",
             port, plugin_uuid, register_event
         );
-        if let Err(e) =
-            plugin::run_plugin(port, plugin_uuid, register_event, cli.info, audio, media).await
+        if let Err(e) = plugin::run_plugin(
+            port,
+            plugin_uuid,
+            register_event,
+            cli.info,
+            audio,
+            media,
+            teams::TeamsController::new(),
+        )
+        .await
         {
             error!("[yft sandbox] Plugin exited with error: {:?}", e);
             std::process::exit(1);

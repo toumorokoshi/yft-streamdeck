@@ -2,7 +2,7 @@
 name = "macos-media"
 version = "1.0.0"
 edition = "2021"
-description = "macOS Stream Deck utilities: Media controls and Mic Mute (0% / 100%)"
+description = "macOS Stream Deck utilities: Media controls, Mic Mute (0% / 100%), and Microsoft Teams mute / camera"
 authors = ["toumorokoshi"]
 
 [[bin]]

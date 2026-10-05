@@ -19,6 +19,8 @@ static NSString * const kPathMic = @"M80,128V64a48,48,0,0,1,96,0v64a48,48,0,0,1-
 
 static NSString * const kPathMicSlash = @"M213.38,229.92a8,8,0,0,1-11.3-.54l-30.92-34A78.83,78.83,0,0,1,136,207.59V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64.07,64.07,0,0,0,64,64,63.41,63.41,0,0,0,32.21-8.68l-11.1-12.2A48,48,0,0,1,80,128V95.09L42.08,53.38A8,8,0,0,1,53.92,42.62l160,176A8,8,0,0,1,213.38,229.92Zm-24.19-63.13a7.88,7.88,0,0,0,3.51.82,8,8,0,0,0,7.19-4.49A79.16,79.16,0,0,0,208,128a8,8,0,0,0-16,0,63.32,63.32,0,0,1-6.48,28.09A8,8,0,0,0,189.19,166.79Zm-27.33-29.22A8,8,0,0,0,175.74,133a49.49,49.49,0,0,0,.26-5V64A48,48,0,0,0,84,44.87a8,8,0,0,0,1.41,8.57Z";
 
+static NSString * const kPathVideoCamera = @"M251.77,73a8,8,0,0,0-8.21.39L208,97.05V72a16,16,0,0,0-16-16H32A16,16,0,0,0,16,72V184a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V159l35.56,23.71A8,8,0,0,0,248,184a8,8,0,0,0,8-8V80A8,8,0,0,0,251.77,73Z";
+
 static void renderExactPNG(NSImage *img, int pixels, NSString *destPath) {
     NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
                                                                     pixelsWide:pixels
@@ -137,6 +139,45 @@ static void createMicIcon(NSString *outputDir, NSString *name, BOOL isLive) {
     renderExactPNG(svgImage, 128, png128);
 }
 
+// Writes an SVG string and renders its 72x72, 144x144 (@2x), and 128x128 PNG variants.
+static void writeIconVariants(NSString *outputDir, NSString *name, NSString *svgContent) {
+    NSString *svgPath = [NSString stringWithFormat:@"%@/%@.svg", outputDir, name];
+    [svgContent writeToFile:svgPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    NSImage *svgImage = [[NSImage alloc] initWithContentsOfFile:svgPath];
+    if (!svgImage) {
+        NSLog(@"[Error] Failed to load generated SVG: %@", svgPath);
+        return;
+    }
+
+    renderExactPNG(svgImage, 72, [NSString stringWithFormat:@"%@/%@.png", outputDir, name]);
+    renderExactPNG(svgImage, 144, [NSString stringWithFormat:@"%@/%@@2x.png", outputDir, name]);
+    renderExactPNG(svgImage, 128, [NSString stringWithFormat:@"%@/%@_128.png", outputDir, name]);
+}
+
+// Green (on) / red (off) status tile without a percentage badge, used for Teams keys.
+// When drawSlash is set, a diagonal slash is drawn over the glyph.
+static void createStatusIcon(NSString *outputDir, NSString *name, NSString *pathData, BOOL isOn, BOOL drawSlash) {
+    NSString *background = isOn ? @"#1A2421" : @"#2A1D1F";
+    NSString *accent = isOn ? @"#10B981" : @"#EF4444";
+    NSString *slash = drawSlash
+        ? [NSString stringWithFormat:
+            @"  <line x1=\"60\" y1=\"60\" x2=\"196\" y2=\"196\" stroke=\"%@\" stroke-width=\"26\" stroke-linecap=\"round\"/>\n"
+            @"  <line x1=\"60\" y1=\"60\" x2=\"196\" y2=\"196\" stroke=\"%@\" stroke-width=\"10\" stroke-linecap=\"round\"/>\n",
+            background, accent]
+        : @"";
+    NSString *svgContent = [NSString stringWithFormat:
+        @"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 256 256\">\n"
+        @"  <rect width=\"256\" height=\"256\" rx=\"48\" fill=\"%@\"/>\n"
+        @"  <rect width=\"256\" height=\"256\" rx=\"48\" fill=\"none\" stroke=\"%@\" stroke-width=\"6\"/>\n"
+        @"  <g transform=\"translate(51.2, 51.2) scale(0.60)\">\n"
+        @"    <path d=\"%@\" fill=\"%@\"/>\n"
+        @"  </g>\n"
+        @"%@"
+        @"</svg>\n", background, accent, pathData, accent, slash];
+    writeIconVariants(outputDir, name, svgContent);
+}
+
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
         NSString *dir = @"icons";
@@ -161,6 +202,12 @@ int main(int argc, const char * argv[]) {
         createMicIcon(dir, @"mic_on", YES);
         createMicIcon(dir, @"mic_off", NO);
         createMicIcon(dir, @"mic", YES);
+
+        // Generate Microsoft Teams status icons
+        createStatusIcon(dir, @"teams_mic_on", kPathMic, YES, NO);
+        createStatusIcon(dir, @"teams_mic_off", kPathMicSlash, NO, NO);
+        createStatusIcon(dir, @"camera_on", kPathVideoCamera, YES, NO);
+        createStatusIcon(dir, @"camera_off", kPathVideoCamera, NO, YES);
 
         // Copy Phosphor LICENSE into icons directory
         NSString *licenseText =

@@ -1,5 +1,6 @@
 use crate::audio::AudioController;
 use crate::media::MediaController;
+use crate::teams::{TeamsController, TeamsState};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use serde::Serialize;
@@ -13,6 +14,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 pub const ACTION_MIC_MUTE: &str = "com.toumorokoshi.yftsandbox.micmute";
 pub const ACTION_TEAMS_MUTE: &str = "com.toumorokoshi.yftsandbox.teamsmute";
+pub const ACTION_TEAMS_CAMERA: &str = "com.toumorokoshi.yftsandbox.teamscamera";
 
 pub const ACTION_PLAY_PAUSE: &str = "com.toumorokoshi.yftsandbox.playpause";
 pub const ACTION_PLAY: &str = "com.toumorokoshi.yftsandbox.play";
@@ -73,6 +75,15 @@ pub struct SetTitleMessage<'a> {
     pub payload: SetTitlePayload<'a>,
 }
 
+/// Outgoing showAlert message (displays a warning indicator on the key).
+#[derive(Debug, Serialize)]
+pub struct ShowAlertMessage<'a> {
+    /// Message event type (`showAlert`).
+    pub event: &'static str,
+    /// Stream Deck button context token.
+    pub context: &'a str,
+}
+
 /// Tracks active Stream Deck contexts currently visible on the screen.
 struct PluginState {
     /// Active contexts showing media play/pause.
@@ -85,6 +96,52 @@ struct PluginState {
     last_mic_title: Option<String>,
     /// Last sent media play/pause state.
     last_media_state: Option<usize>,
+    /// Active contexts showing Teams mute.
+    active_teams_mute: HashSet<String>,
+    /// Active contexts showing Teams camera.
+    active_teams_camera: HashSet<String>,
+}
+
+/// Sends setState and setTitle for a Teams key reflecting the given meeting state.
+fn send_teams_key_state(
+    tx: &tokio::sync::mpsc::UnboundedSender<String>,
+    context: &str,
+    action: &str,
+    teams: &TeamsState,
+) {
+    let is_on = if action == ACTION_TEAMS_CAMERA {
+        teams.is_video_on
+    } else {
+        !teams.is_muted
+    };
+    let state_val = if teams.in_meeting && is_on { 1 } else { 0 };
+    let title_val = if !teams.connected {
+        "No Teams"
+    } else if !teams.in_meeting {
+        "No mtg"
+    } else {
+        ""
+    };
+
+    let set_state = SetStateMessage {
+        event: "setState",
+        context,
+        payload: SetStatePayload { state: state_val },
+    };
+    let set_title = SetTitleMessage {
+        event: "setTitle",
+        context,
+        payload: SetTitlePayload {
+            title: title_val,
+            target: 0,
+        },
+    };
+    if let Ok(json) = serde_json::to_string(&set_state) {
+        let _ = tx.send(json);
+    }
+    if let Ok(json) = serde_json::to_string(&set_title) {
+        let _ = tx.send(json);
+    }
 }
 
 /// Runs the Stream Deck / OpenDeck plugin WebSocket event loop.
@@ -95,6 +152,7 @@ pub async fn run_plugin(
     _info_json: Option<String>,
     audio: Arc<AudioController>,
     media: Arc<MediaController>,
+    teams: Arc<TeamsController>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let url = format!("ws://127.0.0.1:{}", port);
     info!("[StreamDeckPlugin] Connecting to {}...", url);
@@ -122,6 +180,8 @@ pub async fn run_plugin(
         last_mic_state: None,
         last_mic_title: None,
         last_media_state: None,
+        active_teams_mute: HashSet::new(),
+        active_teams_camera: HashSet::new(),
     }));
 
     // Channel for outgoing WebSocket text messages
@@ -213,6 +273,23 @@ pub async fn run_plugin(
         }
     });
 
+    // Teams state watcher task to sync Teams keys with meeting state pushed by Teams
+    let teams_state = state.clone();
+    let teams_tx = tx_out.clone();
+    let mut teams_rx = teams.subscribe();
+    let teams_handle = tokio::spawn(async move {
+        while teams_rx.changed().await.is_ok() {
+            let teams_status = teams_rx.borrow_and_update().clone();
+            let st = teams_state.lock().await;
+            for ctx in &st.active_teams_mute {
+                send_teams_key_state(&teams_tx, ctx, ACTION_TEAMS_MUTE, &teams_status);
+            }
+            for ctx in &st.active_teams_camera {
+                send_teams_key_state(&teams_tx, ctx, ACTION_TEAMS_CAMERA, &teams_status);
+            }
+        }
+    });
+
     // Inbound message reader loop
     while let Some(msg_res) = read.next().await {
         let msg = match msg_res {
@@ -262,7 +339,13 @@ pub async fn run_plugin(
                     if let Ok(json) = serde_json::to_string(&msg) {
                         let _ = tx_out.send(json);
                     }
-                } else if action == ACTION_MIC_MUTE || action == ACTION_TEAMS_MUTE {
+                } else if action == ACTION_TEAMS_MUTE {
+                    st.active_teams_mute.insert(context.to_string());
+                    send_teams_key_state(&tx_out, context, action, &teams.get_status());
+                } else if action == ACTION_TEAMS_CAMERA {
+                    st.active_teams_camera.insert(context.to_string());
+                    send_teams_key_state(&tx_out, context, action, &teams.get_status());
+                } else if action == ACTION_MIC_MUTE {
                     st.active_mic_mute.insert(context.to_string());
                     let status = audio.get_status();
                     let state_val = if status.is_muted { 0 } else { 1 };
@@ -304,10 +387,28 @@ pub async fn run_plugin(
                 let mut st = state.lock().await;
                 st.active_play_pause.remove(context);
                 st.active_mic_mute.remove(context);
+                st.active_teams_mute.remove(context);
+                st.active_teams_camera.remove(context);
             }
             "keyDown" => {
                 debug!("[StreamDeckPlugin] Key down for action: {}", action);
-                if action == ACTION_MIC_MUTE || action == ACTION_TEAMS_MUTE {
+                if action == ACTION_TEAMS_MUTE || action == ACTION_TEAMS_CAMERA {
+                    // On success, Teams pushes a meetingUpdate that the watcher task renders.
+                    let sent = if action == ACTION_TEAMS_CAMERA {
+                        teams.toggle_video()
+                    } else {
+                        teams.toggle_mute()
+                    };
+                    if !sent {
+                        let alert = ShowAlertMessage {
+                            event: "showAlert",
+                            context,
+                        };
+                        if let Ok(json) = serde_json::to_string(&alert) {
+                            let _ = tx_out.send(json);
+                        }
+                    }
+                } else if action == ACTION_MIC_MUTE {
                     audio.toggle_mute();
 
                     // Immediately broadcast updated status to all active mic mute keys
@@ -384,6 +485,7 @@ pub async fn run_plugin(
     }
 
     poller_handle.abort();
+    teams_handle.abort();
     writer_handle.abort();
     Ok(())
 }

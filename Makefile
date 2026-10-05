@@ -3,7 +3,7 @@ PLUGIN_ID = com.toumorokoshi.yftsandbox.sdPlugin
 LEGACY_PLUGIN_ID = com.toumorokoshi.macosmedia.sdPlugin
 OPENDECK_PLUGINS_DIR = $(HOME)/Library/Application Support/opendeck/plugins
 
-RUST_SOURCES = src/main.rs src/audio.rs src/media.rs src/plugin.rs Cargo.toml
+RUST_SOURCES = src/main.rs src/audio.rs src/media.rs src/plugin.rs src/teams.rs Cargo.toml
 
 .PHONY: all bundle icons test clean install link
 

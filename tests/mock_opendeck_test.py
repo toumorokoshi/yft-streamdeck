@@ -12,6 +12,8 @@ import base64
 import json
 import struct
 import subprocess
+import tempfile
+import threading
 import time
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -90,6 +92,67 @@ class WSMessageQueue:
                 break
         raise TimeoutError(f"Timed out waiting for message satisfying condition. Received queue: {self.queue}")
 
+def accept_ws(server_sock):
+    """Accepts a single WebSocket client and completes the handshake. Returns (socket, request line)."""
+    client_sock, _ = server_sock.accept()
+    request = client_sock.recv(2048).decode('utf-8')
+    sec_key = None
+    for line in request.split("\r\n"):
+        if line.lower().startswith("sec-websocket-key:"):
+            sec_key = line.split(":", 1)[1].strip()
+            break
+    assert sec_key is not None, "Failed to find Sec-WebSocket-Key in handshake"
+    handshake_resp = (
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Accept: {create_ws_accept(sec_key)}\r\n\r\n"
+    )
+    client_sock.sendall(handshake_resp.encode('utf-8'))
+    return client_sock, request.split("\r\n", 1)[0]
+
+class MockTeams:
+    """Minimal Microsoft Teams third-party API (protocol 2.0.0) server."""
+
+    def __init__(self):
+        self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_sock.bind(('127.0.0.1', 0))
+        self.server_sock.listen(1)
+        self.port = self.server_sock.getsockname()[1]
+        self.state = {"isInMeeting": True, "isMuted": True, "isVideoOn": False}
+        self.request_line = None
+        self.received_actions = []
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _send_update(self, sock):
+        send_frame(sock, json.dumps({
+            "meetingUpdate": {
+                "meetingState": self.state,
+                "meetingPermissions": {"canToggleMute": True, "canToggleVideo": True},
+            }
+        }))
+
+    def _serve(self):
+        sock, self.request_line = accept_ws(self.server_sock)
+        self._send_update(sock)
+        while True:
+            try:
+                sock.settimeout(None)
+                frame = read_frame(sock)
+            except OSError:
+                return
+            if frame is None:
+                return
+            req = json.loads(frame)
+            self.received_actions.append(req.get("action"))
+            if req.get("action") == "toggle-video":
+                self.state["isVideoOn"] = not self.state["isVideoOn"]
+            elif req.get("action") == "toggle-mute":
+                self.state["isMuted"] = not self.state["isMuted"]
+            send_frame(sock, json.dumps({"requestId": req.get("requestId"), "response": "Success"}))
+            self._send_update(sock)
+
 def main():
     print("=== Running Mock OpenDeck WebSocket Integration Test ===")
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -103,13 +166,20 @@ def main():
     test_uuid = "test-plugin-uuid-999"
     reg_event = "registerPlugin"
 
+    mock_teams = MockTeams()
+    token_dir = tempfile.TemporaryDirectory()
+    env = dict(os.environ)
+    env["YFT_TEAMS_API_URL"] = f"ws://127.0.0.1:{mock_teams.port}"
+    env["YFT_TEAMS_TOKEN_PATH"] = os.path.join(token_dir.name, "teams_token")
+    print(f"Mock Teams API listening on port {mock_teams.port}")
+
     proc = subprocess.Popen([
         binary_path,
         "-port", str(port),
         "-pluginUUID", test_uuid,
         "-registerEvent", reg_event,
         "-info", "{}"
-    ])
+    ], env=env)
 
     try:
         server_sock.settimeout(5.0)
@@ -229,6 +299,42 @@ def main():
         send_frame(client_sock, json.dumps(will_disappear))
         print("Sent willDisappear event for micmute")
 
+        # Step 7: Teams camera and mute keys reflect meeting state pushed by Teams
+        context_camera = "mock-key-context-teams-camera"
+        context_teams_mute = "mock-key-context-teams-mute"
+        for action, ctx in [
+            ("com.toumorokoshi.yftsandbox.teamscamera", context_camera),
+            ("com.toumorokoshi.yftsandbox.teamsmute", context_teams_mute),
+        ]:
+            send_frame(client_sock, json.dumps({
+                "event": "willAppear",
+                "action": action,
+                "context": ctx,
+                "device": "mock-streamdeck-1",
+                "payload": {"settings": {}, "state": 0}
+            }))
+        # Once the mock Teams meetingUpdate arrives, keys show in-meeting (empty title) with camera off / muted.
+        for ctx in [context_camera, context_teams_mute]:
+            mq.wait_for(lambda m, ctx=ctx: m.get("event") == "setTitle" and m.get("context") == ctx and m["payload"]["title"] == "")
+        assert "protocol-version=2.0.0" in mock_teams.request_line, mock_teams.request_line
+        print("✓ Teams keys synchronized with meeting state")
+
+        # Step 8: Toggle Teams camera and mute via keyDown
+        for action, ctx, teams_action in [
+            ("com.toumorokoshi.yftsandbox.teamscamera", context_camera, "toggle-video"),
+            ("com.toumorokoshi.yftsandbox.teamsmute", context_teams_mute, "toggle-mute"),
+        ]:
+            send_frame(client_sock, json.dumps({
+                "event": "keyDown",
+                "action": action,
+                "context": ctx,
+                "device": "mock-streamdeck-1",
+                "payload": {"settings": {}, "state": 0}
+            }))
+            mq.wait_for(lambda m, ctx=ctx: m.get("event") == "setState" and m.get("context") == ctx and m["payload"]["state"] == 1)
+            assert teams_action in mock_teams.received_actions, mock_teams.received_actions
+            print(f"✓ Teams {teams_action} verified")
+
         print("✓ All protocol assertions passed successfully!")
 
     finally:
@@ -237,6 +343,8 @@ def main():
         except Exception:
             pass
         server_sock.close()
+        mock_teams.server_sock.close()
+        token_dir.cleanup()
         proc.terminate()
         try:
             proc.wait(timeout=2.0)

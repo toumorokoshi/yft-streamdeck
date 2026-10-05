@@ -1,6 +1,6 @@
 {
   "Name": "yft sandbox",
-  "Description": "macOS Stream Deck utilities: Media controls and Mic Mute (0% / 100%)",
+  "Description": "macOS Stream Deck utilities: Media controls, Mic Mute (0% / 100%), and Microsoft Teams mute / camera",
   "Author": "toumorokoshi",
   "Version": "1.0.0",
   "Icon": "icons/plugin",
@@ -39,6 +39,54 @@
           "Image": "icons/mic_on",
           "TitleAlignment": "bottom",
           "Name": "Live"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.yftsandbox.teamsmute",
+      "Name": "Teams Mute",
+      "Icon": "icons/teams_mic_on",
+      "Tooltip": "Toggle Microsoft Teams microphone mute in the current meeting",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "DisableAutomaticStates": true,
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/teams_mic_off",
+          "TitleAlignment": "bottom",
+          "Name": "Muted"
+        },
+        {
+          "Image": "icons/teams_mic_on",
+          "TitleAlignment": "bottom",
+          "Name": "Live"
+        }
+      ]
+    },
+    {
+      "UUID": "com.toumorokoshi.yftsandbox.teamscamera",
+      "Name": "Teams Camera",
+      "Icon": "icons/camera_on",
+      "Tooltip": "Toggle Microsoft Teams camera in the current meeting",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "DisableAutomaticStates": true,
+      "SupportedInMultiActions": true,
+      "States": [
+        {
+          "Image": "icons/camera_off",
+          "TitleAlignment": "bottom",
+          "Name": "Camera Off"
+        },
+        {
+          "Image": "icons/camera_on",
+          "TitleAlignment": "bottom",
+          "Name": "Camera On"
         }
       ]
     },
